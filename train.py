@@ -153,10 +153,21 @@ class Agent:
         self.memory[junction]["action_memory"][index] = action
         self.memory[junction]["mem_cntr"] += 1
 
+    # def choose_action(self, observation):
+    #     state = torch.tensor([observation], dtype=torch.float).to(self.Q_eval.device)
+    #     if np.random.random() > self.epsilon:
+    #         actions = self.Q_eval.forward(state)
+    #         action = torch.argmax(actions).item()
+    #     else:
+    #         action = np.random.choice(self.action_space)
+    #     return action
     def choose_action(self, observation):
         state = torch.tensor([observation], dtype=torch.float).to(self.Q_eval.device)
         if np.random.random() > self.epsilon:
-            actions = self.Q_eval.forward(state)
+            if self.model_type == 'ddqn':
+                actions = self.Q_target.forward(state)
+            else:
+                actions = self.Q_eval.forward(state)
             action = torch.argmax(actions).item()
         else:
             action = np.random.choice(self.action_space)
@@ -166,8 +177,13 @@ class Agent:
         for junction_number in junction_numbers:
             self.memory[junction_number]['mem_cntr'] = 0
 
+    # def save(self, model_name):
+    #     torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
     def save(self, model_name):
-        torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
+        if self.model_type == 'ddqn':
+            torch.save(self.Q_target.state_dict(), f'models/{model_name}.bin')
+        else:
+            torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
 
     def learn(self, junction):
         self.Q_eval.optimizer.zero_grad()

@@ -238,7 +238,8 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             )
         else:
             traci.start(
-            [checkBinary("sumo-gui"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
+            # [checkBinary("sumo-gui"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
+            [checkBinary("sumo"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
             )
 
         print(f"epoch: {e}")

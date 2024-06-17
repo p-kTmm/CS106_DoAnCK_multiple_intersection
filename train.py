@@ -170,33 +170,29 @@ class Agent:
         torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
 
     def learn(self, junction):
-        if self.memory[junction]['mem_cntr'] < self.batch_size:
-            return
-
         self.Q_eval.optimizer.zero_grad()
 
-        max_mem = min(self.memory[junction]['mem_cntr'], self.max_mem)
-        batch_indices = np.random.choice(max_mem, self.batch_size, replace=False)
+        batch= np.arange(self.memory[junction]['mem_cntr'], dtype=np.int32)
 
-        state_batch = torch.tensor(self.memory[junction]["state_memory"][batch_indices]).to(
+        state_batch = torch.tensor(self.memory[junction]["state_memory"][batch]).to(
             self.Q_eval.device
         )
         new_state_batch = torch.tensor(
-            self.memory[junction]["new_state_memory"][batch_indices]
+            self.memory[junction]["new_state_memory"][batch]
         ).to(self.Q_eval.device)
         reward_batch = torch.tensor(
-            self.memory[junction]['reward_memory'][batch_indices]).to(self.Q_eval.device)
-        terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch_indices]).to(self.Q_eval.device)
-        action_batch = self.memory[junction]["action_memory"][batch_indices]
+            self.memory[junction]['reward_memory'][batch]).to(self.Q_eval.device)
+        terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch]).to(self.Q_eval.device)
+        action_batch = self.memory[junction]["action_memory"][batch]
 
-        q_eval = self.Q_eval.forward(state_batch)[batch_indices, action_batch]
+        q_eval = self.Q_eval.forward(state_batch)[batch, action_batch]
 
         if self.model_type == 'ddqn':
             q_next = self.Q_target.forward(new_state_batch)
             q_eval_next = self.Q_eval.forward(new_state_batch)
             max_actions = torch.argmax(q_eval_next, dim=1)
             q_next[terminal_batch] = 0.0
-            q_target = reward_batch + self.gamma * q_next[range(self.batch_size), max_actions]
+            q_target = reward_batch + self.gamma * q_next[batch, max_actions]
         else:
             q_next = self.Q_eval.forward(new_state_batch)
             q_next[terminal_batch] = 0.0

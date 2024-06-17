@@ -95,6 +95,7 @@ class Agent:
         batch_size,
         n_actions,
         junctions,
+        model_type='dqn',  # thêm tham số này
         max_memory_size=100000,
         epsilon_dec=5e-4,
         epsilon_end=0.05,
@@ -115,10 +116,18 @@ class Agent:
         self.mem_cntr = 0
         self.iter_cntr = 0
         self.replace_target = 100
+        self.model_type = model_type  # thêm tham số này
 
         self.Q_eval = Model(
             self.lr, self.input_dims, self.fc1_dims, self.fc2_dims, self.n_actions
         )
+        
+        if self.model_type == 'ddqn':
+            self.Q_target = Model(
+                self.lr, self.input_dims, self.fc1_dims, self.fc2_dims, self.n_actions
+            )
+            self.Q_target.load_state_dict(self.Q_eval.state_dict())
+
         self.memory = dict()
         for junction in junctions:
             self.memory[junction] = {
@@ -128,15 +137,14 @@ class Agent:
                 "new_state_memory": np.zeros(
                     (self.max_mem, self.input_dims), dtype=np.float32
                 ),
-                "reward_memory":np.zeros(self.max_mem, dtype=np.float32),
+                "reward_memory": np.zeros(self.max_mem, dtype=np.float32),
                 "action_memory": np.zeros(self.max_mem, dtype=np.int32),
                 "terminal_memory": np.zeros(self.max_mem, dtype=np.bool_),
                 "mem_cntr": 0,
                 "iter_cntr": 0,
             }
 
-
-    def store_transition(self, state, state_, action,reward, done,junction):
+    def store_transition(self, state, state_, action, reward, done, junction):
         index = self.memory[junction]["mem_cntr"] % self.max_mem
         self.memory[junction]["state_memory"][index] = state
         self.memory[junction]["new_state_memory"][index] = state_
@@ -153,34 +161,47 @@ class Agent:
         else:
             action = np.random.choice(self.action_space)
         return action
-    
-    def reset(self,junction_numbers):
+
+    def reset(self, junction_numbers):
         for junction_number in junction_numbers:
             self.memory[junction_number]['mem_cntr'] = 0
 
-    def save(self,model_name):
-        torch.save(self.Q_eval.state_dict(),f'models/{model_name}.bin')
+    def save(self, model_name):
+        torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
 
     def learn(self, junction):
+        if self.memory[junction]['mem_cntr'] < self.batch_size:
+            return
+
         self.Q_eval.optimizer.zero_grad()
 
-        batch= np.arange(self.memory[junction]['mem_cntr'], dtype=np.int32)
+        max_mem = min(self.memory[junction]['mem_cntr'], self.max_mem)
+        batch_indices = np.random.choice(max_mem, self.batch_size, replace=False)
 
-        state_batch = torch.tensor(self.memory[junction]["state_memory"][batch]).to(
+        state_batch = torch.tensor(self.memory[junction]["state_memory"][batch_indices]).to(
             self.Q_eval.device
         )
         new_state_batch = torch.tensor(
-            self.memory[junction]["new_state_memory"][batch]
+            self.memory[junction]["new_state_memory"][batch_indices]
         ).to(self.Q_eval.device)
         reward_batch = torch.tensor(
-            self.memory[junction]['reward_memory'][batch]).to(self.Q_eval.device)
-        terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch]).to(self.Q_eval.device)
-        action_batch = self.memory[junction]["action_memory"][batch]
+            self.memory[junction]['reward_memory'][batch_indices]).to(self.Q_eval.device)
+        terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch_indices]).to(self.Q_eval.device)
+        action_batch = self.memory[junction]["action_memory"][batch_indices]
 
-        q_eval = self.Q_eval.forward(state_batch)[batch, action_batch]
-        q_next = self.Q_eval.forward(new_state_batch)
-        q_next[terminal_batch] = 0.0
-        q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
+        q_eval = self.Q_eval.forward(state_batch)[batch_indices, action_batch]
+
+        if self.model_type == 'ddqn':
+            q_next = self.Q_target.forward(new_state_batch)
+            q_eval_next = self.Q_eval.forward(new_state_batch)
+            max_actions = torch.argmax(q_eval_next, dim=1)
+            q_next[terminal_batch] = 0.0
+            q_target = reward_batch + self.gamma * q_next[range(self.batch_size), max_actions]
+        else:
+            q_next = self.Q_eval.forward(new_state_batch)
+            q_next[terminal_batch] = 0.0
+            q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
+
         loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
 
         loss.backward()
@@ -193,8 +214,10 @@ class Agent:
             else self.epsilon_end
         )
 
+        if self.model_type == 'ddqn' and self.iter_cntr % self.replace_target == 0:
+            self.Q_target.load_state_dict(self.Q_eval.state_dict())
 
-def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
+def run(train=True, model_name="model", epochs=50, steps=500, ard=False, model_type='dqn'):
     if ard:
         arduino = serial.Serial(port="/dev/cu.usbmodem101", baudrate=9600, timeout=.1)
         def write_read(x):
@@ -218,16 +241,16 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
         epsilon=0.0,
         lr=0.1,
         input_dims=4,
-        # input_dims = len(all_junctions) * 4,
         fc1_dims=256,
         fc2_dims=256,
         batch_size=1024,
         n_actions=4,
         junctions=junction_numbers,
+        model_type=model_type,
     )
 
     if not train:
-        brain.Q_eval.load_state_dict(torch.load(f'models/{model_name}.bin',map_location=brain.Q_eval.device))
+        brain.Q_eval.load_state_dict(torch.load(f'models/{model_name}.bin', map_location=brain.Q_eval.device))
 
     print(brain.Q_eval.device)
     traci.close()
@@ -238,8 +261,7 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             )
         else:
             traci.start(
-            # [checkBinary("sumo-gui"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
-            [checkBinary("sumo"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
+            [checkBinary("sumo-gui"), "-c", "configuration.sumocfg", "--tripinfo-output", "tripinfo.xml"]
             )
 
         print(f"epoch: {e}")
@@ -250,18 +272,10 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             ["rrrrrrrrryyy", "rrrrrrrrrGGG"],
         ]
 
-        # select_lane = [
-        #     ["yyyyrrrrrrrrrrrr", "GGGGrrrrrrrrrrrr"],
-        #     ["rrrryyyyrrrrrrrr", "rrrrGGGGrrrrrrrr"],
-        #     ["rrrrrrrryyyyrrrr", "rrrrrrrrGGGGrrrr"],
-        #     ["rrrrrrrrrrrryyyy", "rrrrrrrrrrrrGGGG"],
-        # ]
-
         step = 0
         total_time = 0
         min_duration = 5
 
-        #for testing simulation comparsion
         wt_per_step  =  0
         wt_list = []
         
@@ -276,7 +290,6 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             prev_action[junction_number] = 0
             traffic_lights_time[junction] = 0
             prev_vehicles_per_lane[junction_number] = [0] * 4
-            # prev_vehicles_per_lane[junction_number] = [0] * (len(all_junctions) * 4) 
             all_lanes.extend(list(traci.trafficlight.getControlledLanes(junction)))
 
         while step <= steps:
@@ -289,16 +302,13 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
 
                 if traffic_lights_time[junction] == 0:
                     vehicles_per_lane = get_vehicle_numbers(controled_lanes)
-                    # vehicles_per_lane = get_vehicle_numbers(all_lanes)
 
-                    #storing previous state and current state
                     reward = -1 *  waiting_time
                     state_ = list(vehicles_per_lane.values()) 
                     state = prev_vehicles_per_lane[junction_number]
                     prev_vehicles_per_lane[junction_number] = state_
-                    brain.store_transition(state, state_, prev_action[junction_number],reward,(step==steps),junction_number)
+                    brain.store_transition(state, state_, prev_action[junction_number], reward, (step == steps), junction_number)
 
-                    #selecting new action based on current state
                     lane = brain.choose_action(state_)
                     prev_action[junction_number] = lane
                     phaseDuration(junction, 6, select_lane[lane][0])
@@ -306,14 +316,14 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
 
                     if ard:
                         ph = str(traci.trafficlight.getRedYellowGreenState("gneJ2"))
-                        if ph=="GGGrrrrrrrrr":
-                            ph=0
-                        elif ph=="rrrGGGrrrrrr":
-                            ph=2
-                        elif ph=="rrrrrrGGGrrr":
-                            ph=4
-                        elif ph=="rrrrrrrrrGGG":
-                            ph=6
+                        if ph == "GGGrrrrrrrrr":
+                            ph = 0
+                        elif ph == "rrrGGGrrrrrr":
+                            ph = 2
+                        elif ph == "rrrrrrGGGrrr":
+                            ph = 4
+                        elif ph == "rrrrrrrrrGGG":
+                            ph = 6
                         value = write_read(str(ph))
 
                     traffic_lights_time[junction] = min_duration + 10
@@ -326,7 +336,7 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             wt_per_step = 0
             step += 1
 
-        print("total_time",total_time)
+        print("total_time", total_time)
         total_time_list.append(total_time)
 
         if total_time < best_time:
@@ -340,11 +350,10 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             break
 
     if train:
-        plt.plot(list(range(len(total_time_list))),total_time_list)
+        plt.plot(list(range(len(total_time_list))), total_time_list)
         plt.xlabel("epochs")
         plt.ylabel("total time")
         plt.savefig(f'plots_training/time_vs_epoch_{model_name}.png')
-        # plt.show()
 
     else:
         model_dir = f"plots_testing/{model_name}"
@@ -356,11 +365,12 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
             for line in wt_list:
                 f.write(f"{line}\n")
                 
-        plt.plot(list(range(len(wt_list))),wt_list)
+        plt.plot(list(range(len(wt_list))), wt_list)
         plt.xlabel("steps")
         plt.ylabel("total time")
         plt.savefig(f'{model_dir}/waiting_time.png')
         plt.show()
+
 
 def get_options():
     optParser = optparse.OptionParser()
@@ -373,7 +383,7 @@ def get_options():
     )
     optParser.add_option(
         "--train",
-        action = 'store_true',
+        action='store_true',
         default=False,
         help="training or testing",
     )
@@ -392,15 +402,23 @@ def get_options():
         help="Number of steps",
     )
     optParser.add_option(
-       "--ard",
+        "--ard",
         action='store_true',
         default=False,
         help="Connect Arduino", 
+    )
+    optParser.add_option(
+        "--option_model",
+        dest='option_model',
+        type='string',
+        default='dqn',
+        help="Model type: 'dqn' or 'ddqn'",
     )
     options, args = optParser.parse_args()
     return options
 
 
+# this is the main entry point of this script
 # this is the main entry point of this script
 if __name__ == "__main__":
     options = get_options()
@@ -409,4 +427,7 @@ if __name__ == "__main__":
     epochs = options.epochs
     steps = options.steps
     ard = options.ard
-    run(train=train,model_name=model_name,epochs=epochs,steps=steps,ard=ard)
+    model_type = options.option_model  # lấy tùy chọn model
+
+    run(train=train, model_name=model_name, epochs=epochs, steps=steps, ard=ard, model_type=model_type)
+

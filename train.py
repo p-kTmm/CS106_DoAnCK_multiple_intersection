@@ -115,7 +115,7 @@ class Agent:
         self.epsilon_end = epsilon_end
         self.mem_cntr = 0
         self.iter_cntr = 0
-        self.replace_target = 50
+        self.replace_target = 100
         self.model_type = model_type  # thêm tham số này
 
         self.Q_eval = Model(

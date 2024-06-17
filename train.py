@@ -182,7 +182,7 @@ class Agent:
     def save(self, model_name):
         if self.model_type == 'ddqn':
             torch.save(self.Q_target.state_dict(), f'models/{model_name}.bin')
-        else:
+        elif self.model_type == 'dqn':
             torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
 
     def learn(self, junction):

@@ -166,7 +166,7 @@ class Agent:
         if np.random.random() > self.epsilon:
             if self.model_type == 'ddqn':
                 actions = self.Q_target.forward(state)
-            else:
+            elif self.model_type == 'dqn':
                 actions = self.Q_eval.forward(state)
             action = torch.argmax(actions).item()
         else:

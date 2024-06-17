@@ -342,7 +342,7 @@ def run(train=True,model_name="model",epochs=50,steps=500,ard=False):
         plt.plot(list(range(len(total_time_list))),total_time_list)
         plt.xlabel("epochs")
         plt.ylabel("total time")
-        plt.savefig(f'plots/time_vs_epoch_{model_name}.png')
+        plt.savefig(f'plots_training/time_vs_epoch_{model_name}.png')
         # plt.show()
 
     else:

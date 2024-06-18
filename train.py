@@ -185,53 +185,53 @@ class Agent:
         elif self.model_type == 'dqn':
             torch.save(self.Q_eval.state_dict(), f'models/{model_name}.bin')
 
-def learn(self, junction):
-    if self.memory[junction]['mem_cntr'] < self.batch_size:
-        return
-
-    self.Q_eval.optimizer.zero_grad()
-
-    max_mem = min(self.memory[junction]['mem_cntr'], self.max_mem)
-    batch_indices = np.random.choice(max_mem, self.batch_size, replace=False)
-
-    state_batch = torch.tensor(self.memory[junction]["state_memory"][batch_indices]).to(
-        self.Q_eval.device
-    )
-    new_state_batch = torch.tensor(
-        self.memory[junction]["new_state_memory"][batch_indices]
-    ).to(self.Q_eval.device)
-    reward_batch = torch.tensor(
-        self.memory[junction]['reward_memory'][batch_indices]).to(self.Q_eval.device)
-    terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch_indices]).to(self.Q_eval.device)
-    action_batch = torch.tensor(self.memory[junction]["action_memory"][batch_indices]).to(self.Q_eval.device)
-
-    q_eval = self.Q_eval.forward(state_batch).gather(1, action_batch.unsqueeze(-1)).squeeze(-1)
-
-    if self.model_type == 'ddqn':
-        q_next = self.Q_target.forward(new_state_batch)
-        q_eval_next = self.Q_eval.forward(new_state_batch)
-        max_actions = torch.argmax(q_eval_next, dim=1)
-        q_next[terminal_batch] = 0.0
-        q_target = reward_batch + self.gamma * q_next.gather(1, max_actions.unsqueeze(-1)).squeeze(-1)
-    else:
-        q_next = self.Q_eval.forward(new_state_batch)
-        q_next[terminal_batch] = 0.0
-        q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
-
-    loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
-
-    loss.backward()
-    self.Q_eval.optimizer.step()
-
-    self.iter_cntr += 1
-    self.epsilon = (
-        self.epsilon - self.epsilon_dec
-        if self.epsilon > self.epsilon_end
-        else self.epsilon_end
-    )
-
-    if self.model_type == 'ddqn' and self.iter_cntr % self.replace_target == 0:
-        self.Q_target.load_state_dict(self.Q_eval.state_dict())
+    def learn(self, junction):
+        if self.memory[junction]['mem_cntr'] < self.batch_size:
+            return
+    
+        self.Q_eval.optimizer.zero_grad()
+    
+        max_mem = min(self.memory[junction]['mem_cntr'], self.max_mem)
+        batch_indices = np.random.choice(max_mem, self.batch_size, replace=False)
+    
+        state_batch = torch.tensor(self.memory[junction]["state_memory"][batch_indices]).to(
+            self.Q_eval.device
+        )
+        new_state_batch = torch.tensor(
+            self.memory[junction]["new_state_memory"][batch_indices]
+        ).to(self.Q_eval.device)
+        reward_batch = torch.tensor(
+            self.memory[junction]['reward_memory'][batch_indices]).to(self.Q_eval.device)
+        terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch_indices]).to(self.Q_eval.device)
+        action_batch = torch.tensor(self.memory[junction]["action_memory"][batch_indices]).to(self.Q_eval.device)
+    
+        q_eval = self.Q_eval.forward(state_batch).gather(1, action_batch.unsqueeze(-1)).squeeze(-1)
+    
+        if self.model_type == 'ddqn':
+            q_next = self.Q_target.forward(new_state_batch)
+            q_eval_next = self.Q_eval.forward(new_state_batch)
+            max_actions = torch.argmax(q_eval_next, dim=1)
+            q_next[terminal_batch] = 0.0
+            q_target = reward_batch + self.gamma * q_next.gather(1, max_actions.unsqueeze(-1)).squeeze(-1)
+        else:
+            q_next = self.Q_eval.forward(new_state_batch)
+            q_next[terminal_batch] = 0.0
+            q_target = reward_batch + self.gamma * torch.max(q_next, dim=1)[0]
+    
+        loss = self.Q_eval.loss(q_target, q_eval).to(self.Q_eval.device)
+    
+        loss.backward()
+        self.Q_eval.optimizer.step()
+    
+        self.iter_cntr += 1
+        self.epsilon = (
+            self.epsilon - self.epsilon_dec
+            if self.epsilon > self.epsilon_end
+            else self.epsilon_end
+        )
+    
+        if self.model_type == 'ddqn' and self.iter_cntr % self.replace_target == 0:
+            self.Q_target.load_state_dict(self.Q_eval.state_dict())
 
 
 def run(train=True, model_name="model", epochs=50, steps=500, ard=False, model_type='dqn'):

@@ -203,7 +203,7 @@ class Agent:
         reward_batch = torch.tensor(
             self.memory[junction]['reward_memory'][batch_indices]).to(self.Q_eval.device)
         terminal_batch = torch.tensor(self.memory[junction]['terminal_memory'][batch_indices]).to(self.Q_eval.device)
-        action_batch = torch.tensor(self.memory[junction]["action_memory"][batch_indices]).to(self.Q_eval.device)
+        action_batch = torch.tensor(self.memory[junction]["action_memory"][batch_indices], dtype=torch.int64).to(self.Q_eval.device)
     
         q_eval = self.Q_eval.forward(state_batch).gather(1, action_batch.unsqueeze(-1)).squeeze(-1)
     
@@ -232,6 +232,7 @@ class Agent:
     
         if self.model_type == 'ddqn' and self.iter_cntr % self.replace_target == 0:
             self.Q_target.load_state_dict(self.Q_eval.state_dict())
+
 
 
 def run(train=True, model_name="model", epochs=50, steps=500, ard=False, model_type='dqn'):

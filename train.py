@@ -34,23 +34,23 @@ def get_vehicle_numbers(lanes):
     return vehicle_per_lane
 
 
-# def get_waiting_time(lanes):
-#     waiting_time = 0
-#     for lane in lanes:
-#         waiting_time += traci.lane.getWaitingTime(lane)
-#     return waiting_time
-
 def get_waiting_time(lanes):
     waiting_time = 0
     for lane in lanes:
-        vehicles = traci.lane.getLastStepVehicleIDs(lane)
-        for vehicle in vehicles:
-            waiting_time += 2*traci.vehicle.getAccumulatedWaitingTime(vehicle) 
-            """
-            vì có nhiều giao lộ, nên nếu 1 xe ở 1 giao lộ thì waiting time của nó là rất nhỏ, 
-            ko đủ đề model quyết định bật đèn xanh, do đó hệ số này sẽ giúp tăng trọng số của waiting time
-            """
+        waiting_time += traci.lane.getWaitingTime(lane)
     return waiting_time
+
+# def get_waiting_time(lanes):
+#     waiting_time = 0
+#     for lane in lanes:
+#         vehicles = traci.lane.getLastStepVehicleIDs(lane)
+#         for vehicle in vehicles:
+#             waiting_time += 2*traci.vehicle.getAccumulatedWaitingTime(vehicle) 
+#             """
+#             vì có nhiều giao lộ, nên nếu 1 xe ở 1 giao lộ thì waiting time của nó là rất nhỏ, 
+#             ko đủ đề model quyết định bật đèn xanh, do đó hệ số này sẽ giúp tăng trọng số của waiting time
+#             """
+#     return waiting_time
 
 
 def phaseDuration(junction, phase_time, phase_state):
